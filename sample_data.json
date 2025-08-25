@@ -1,0 +1,52 @@
+{
+    "event_001": {
+        "output__305546688__querystring__fbc": "test_value_1",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "user_id": "user123"
+    },
+    "event_002": {
+        "output__305546688__querystring__fbc": null,
+        "timestamp": "2024-01-15T10:31:00Z",
+        "user_id": "user124"
+    },
+    "event_003": {
+        "output__305546688__querystring__fbc": "test_value_3",
+        "timestamp": "2024-01-15T10:32:00Z",
+        "user_id": "user125"
+    },
+    "event_004": {
+        "output__305546688__querystring__fbc": "test_value_4",
+        "timestamp": "2024-01-15T10:33:00Z",
+        "user_id": "user126"
+    },
+    "event_005": {
+        "output__305546688__querystring__fbc": null,
+        "timestamp": "2024-01-15T10:34:00Z",
+        "user_id": "user127"
+    },
+    "event_006": {
+        "output__305546688__querystring__fbc": "test_value_6",
+        "timestamp": "2024-01-15T10:35:00Z",
+        "user_id": "user128"
+    },
+    "event_007": {
+        "output__305546688__querystring__fbc": null,
+        "timestamp": "2024-01-15T10:36:00Z",
+        "user_id": "user129"
+    },
+    "event_008": {
+        "output__305546688__querystring__fbc": "test_value_8",
+        "timestamp": "2024-01-15T10:37:00Z",
+        "user_id": "user130"
+    },
+    "event_009": {
+        "output__305546688__querystring__fbc": "test_value_9",
+        "timestamp": "2024-01-15T10:38:00Z",
+        "user_id": "user131"
+    },
+    "event_010": {
+        "output__305546688__querystring__fbc": null,
+        "timestamp": "2024-01-15T10:39:00Z",
+        "user_id": "user132"
+    }
+}

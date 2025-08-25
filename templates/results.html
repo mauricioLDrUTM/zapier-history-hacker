@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis Results - JSON Event Analyzer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="display-5 fw-bold text-primary mb-3">
+                <i class="fas fa-chart-bar me-3"></i>Analysis Results
+            </h1>
+            <p class="lead text-muted">
+                Analysis completed for <strong>{{ results.filename }}</strong>
+            </p>
+        </div>
+
+        <!-- Analysis Parameters -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-cog me-2"></i>Analysis Parameters
+                </h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <strong>Filter Parameter:</strong> 
+                        <span class="badge bg-primary">{{ results.filter_param }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Root ID:</strong> 
+                        <span class="badge bg-secondary">{{ results.root_id }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Show IDs:</strong> 
+                        <span class="badge bg-{{ 'success' if results.show_ids else 'warning' }}">
+                            {{ 'Yes' if results.show_ids else 'No' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stats-card text-center">
+                    <i class="fas fa-list-ol fa-2x mb-2"></i>
+                    <h3 class="mb-1">{{ results.total_events }}</h3>
+                    <p class="mb-0">Total Events</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card text-center">
+                    <i class="fas fa-check-circle fa-2x mb-2"></i>
+                    <h3 class="mb-1">{{ results.target_events }}</h3>
+                    <p class="mb-0">Target Events</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card text-center">
+                    <i class="fas fa-percentage fa-2x mb-2"></i>
+                    <h3 class="mb-1">{{ results.success_rate }}%</h3>
+                    <p class="mb-0">Success Rate</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-chart-pie me-2"></i>Event Distribution
+                </h5>
+                <div class="progress mb-2" style="height: 30px;">
+                    <div class="progress-bar bg-success" role="progressbar" 
+                         style="width: {{ (results.target_events / results.total_events * 100) if results.total_events > 0 else 0 }}%"
+                         aria-valuenow="{{ results.target_events }}" aria-valuemin="0" aria-valuemax="{{ results.total_events }}">
+                        {{ results.target_events }} Target Events
+                    </div>
+                    <div class="progress-bar bg-warning" role="progressbar" 
+                         style="width: {{ ((results.total_events - results.target_events) / results.total_events * 100) if results.total_events > 0 else 0 }}%"
+                         aria-valuenow="{{ results.total_events - results.target_events }}" aria-valuemin="0" aria-valuemax="{{ results.total_events }}">
+                        {{ results.total_events - results.target_events }} Failed Events
+                    </div>
+                </div>
+                <div class="row text-center">
+                    <div class="col-6">
+                        <small class="text-success">
+                            <i class="fas fa-check-circle me-1"></i>
+                            {{ results.target_events }} matching events ({{ "%.1f"|format((results.target_events / results.total_events * 100) if results.total_events > 0 else 0) }}%)
+                        </small>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-warning">
+                            <i class="fas fa-times-circle me-1"></i>
+                            {{ results.total_events - results.target_events }} non-matching events ({{ "%.1f"|format(((results.total_events - results.target_events) / results.total_events * 100) if results.total_events > 0 else 0) }}%)
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw Output -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-code me-2"></i>Raw Output
+                </h5>
+                <pre class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">{{ results.output_content }}</pre>
+            </div>
+        </div>
+
+        {% if results.show_ids %}
+        <!-- Event IDs Details -->
+        <div class="row">
+            <!-- Target Event IDs -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-check-circle me-2"></i>Target Event IDs
+                            <span class="badge bg-light text-success ms-2">{{ results.target_event_ids|length }}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                        {% if results.target_event_ids %}
+                            <div class="list-group list-group-flush">
+                                {% for event_id in results.target_event_ids %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <code>{{ event_id }}</code>
+                                    <span class="badge bg-success rounded-pill">Match</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="text-muted text-center">No target events found</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Failed Event IDs -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-times-circle me-2"></i>Failed Event IDs
+                            <span class="badge bg-light text-warning ms-2">{{ results.failed_event_ids|length }}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                        {% if results.failed_event_ids %}
+                            <div class="list-group list-group-flush">
+                                {% for event_id in results.failed_event_ids %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <code>{{ event_id }}</code>
+                                    <span class="badge bg-warning rounded-pill">No Match</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="text-muted text-center">No failed events found</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Action Buttons -->
+        <div class="text-center mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-primary me-2">
+                <i class="fas fa-arrow-left me-2"></i>Analyze Another File
+            </a>
+            <button class="btn btn-outline-secondary" onclick="window.print()">
+                <i class="fas fa-print me-2"></i>Print Results
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+    .btn, .navbar, .footer {
+        display: none !important;
+    }
+    .main-container {
+        box-shadow: none !important;
+        background: white !important;
+    }
+    .stats-card {
+        background: #f8f9fa !important;
+        color: #333 !important;
+        border: 1px solid #dee2e6 !important;
+    }
+}
+</style>
+{% endblock %}
