@@ -8,9 +8,19 @@ allowing users to upload JSON files and analyze events based on filter parameter
 
 import json
 import os
+import pickle
+import tempfile
 from datetime import datetime
 from typing import Dict, List, Tuple, Any
-from flask import Flask, render_template, request, jsonify, flash, redirect, url_for
+from flask import (
+    Flask,
+    render_template,
+    request,
+    jsonify,
+    flash,
+    redirect,
+    url_for,
+)
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -25,6 +35,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max file size
+
+# Store temporary data files
+TEMP_DATA_FILES = {}
 
 
 def allowed_file(filename):
@@ -141,6 +154,18 @@ def upload_file():
         try:
             # Load and analyze the JSON file
             data = load_json_file(filepath)
+
+            # Store the data in a temporary file instead of session
+            import uuid
+
+            temp_id = str(uuid.uuid4())
+            temp_file = os.path.join(tempfile.gettempdir(), f"json_data_{temp_id}.pkl")
+
+            with open(temp_file, "wb") as f:
+                pickle.dump(data, f)
+
+            TEMP_DATA_FILES[temp_id] = temp_file
+
             total_events, target_events, target_event_ids, failed_event_ids = (
                 analyze_events(data, filter_param, root_id)
             )
@@ -170,6 +195,7 @@ def upload_file():
                 "filter_param": filter_param,
                 "root_id": root_id,
                 "show_ids": show_ids,
+                "temp_id": temp_id,  # Add temp_id to results
             }
 
             return render_template("results.html", results=results)
@@ -229,6 +255,34 @@ def api_analyze():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/event/<temp_id>/<event_id>")
+def event_detail(temp_id, event_id):
+    """Show detailed information for a specific event."""
+    # Get the original JSON data from temporary file
+    if temp_id not in TEMP_DATA_FILES:
+        flash("Event data not available. Please upload the file again.", "error")
+        return redirect(url_for("index"))
+
+    temp_file = TEMP_DATA_FILES[temp_id]
+
+    try:
+        with open(temp_file, "rb") as f:
+            json_data = pickle.load(f)
+    except:
+        flash("Event data corrupted. Please upload the file again.", "error")
+        return redirect(url_for("index"))
+
+    if event_id not in json_data:
+        flash(f"Event ID '{event_id}' not found.", "error")
+        return redirect(url_for("index"))
+
+    event_data = json_data[event_id]
+
+    return render_template(
+        "event_detail.html", event_id=event_id, event_data=event_data
+    )
 
 
 if __name__ == "__main__":

@@ -127,7 +127,9 @@
                             <div class="list-group list-group-flush">
                                 {% for event_id in results.target_event_ids %}
                                 <div class="list-group-item d-flex justify-content-between align-items-center">
-                                    <code>{{ event_id }}</code>
+                                    <a href="{{ url_for('event_detail', temp_id=results.temp_id, event_id=event_id) }}" class="text-decoration-none">
+                                        <code class="text-primary">{{ event_id }}</code>
+                                    </a>
                                     <span class="badge bg-success rounded-pill">Match</span>
                                 </div>
                                 {% endfor %}
@@ -153,7 +155,9 @@
                             <div class="list-group list-group-flush">
                                 {% for event_id in results.failed_event_ids %}
                                 <div class="list-group-item d-flex justify-content-between align-items-center">
-                                    <code>{{ event_id }}</code>
+                                    <a href="{{ url_for('event_detail', temp_id=results.temp_id, event_id=event_id) }}" class="text-decoration-none">
+                                        <code class="text-primary">{{ event_id }}</code>
+                                    </a>
                                     <span class="badge bg-warning rounded-pill">No Match</span>
                                 </div>
                                 {% endfor %}
