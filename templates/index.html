@@ -27,7 +27,7 @@
                             <h5>Drag & Drop your JSON file here</h5>
                             <p class="text-muted">or click to browse</p>
                             <input type="file" class="form-control d-none" id="fileInput" name="file" accept=".json" required>
-                            <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                            <button type="button" class="btn btn-outline-primary" id="chooseFileBtn">
                                 <i class="fas fa-folder-open me-2"></i>Choose File
                             </button>
                         </div>
@@ -121,6 +121,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('fileInput');
     const fileUploadArea = document.getElementById('fileUploadArea');
+    const chooseFileBtn = document.getElementById('chooseFileBtn');
     const fileInfo = document.getElementById('fileInfo');
     const fileName = document.getElementById('fileName');
     const fileSize = document.getElementById('fileSize');
@@ -163,8 +164,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Click to upload
-    fileUploadArea.addEventListener('click', function() {
+    // Click to upload (but not on the button)
+    fileUploadArea.addEventListener('click', function(e) {
+        // Don't trigger if clicking on the button
+        if (e.target.closest('#chooseFileBtn')) {
+            return;
+        }
+        fileInput.click();
+    });
+
+    // Choose file button click
+    chooseFileBtn.addEventListener('click', function(e) {
+        e.stopPropagation(); // Prevent the area click from firing
         fileInput.click();
     });
 
