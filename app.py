@@ -10,6 +10,7 @@ import json
 import os
 import pickle
 import tempfile
+import re
 from datetime import datetime
 from typing import Dict, List, Tuple, Any
 from flask import (
@@ -22,6 +23,8 @@ from flask import (
     url_for,
 )
 from werkzeug.utils import secure_filename
+from typing import Optional, Tuple, List, Dict, Any
+
 
 app = Flask(__name__)
 app.secret_key = "your-secret-key-here"  # Change this in production
@@ -34,7 +37,7 @@ ALLOWED_EXTENSIONS = {"json"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max file size
+app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # 30MB max file size
 
 # Store temporary data files
 TEMP_DATA_FILES = {}
@@ -57,21 +60,33 @@ def load_json_file(file_path: str) -> Dict[str, Any]:
     except Exception as e:
         raise Exception(f"Error reading file '{file_path}': {e}")
 
+def _has_filter_for_root(event_data: Dict[str, Any], root_id: str, filter_param: str) -> Tuple[bool, Optional[str], Optional[Any]]:
+
+    candidates = [
+        f"output__{root_id}__querystring___{filter_param}",
+        f"output__{root_id}__meta__{filter_param}",
+        f"output__{root_id}__meta__handl__{filter_param}",
+        f"output__{root_id}__{filter_param}",
+        f"input__{root_id}__data__{filter_param}",
+    ]
+    for k in candidates:
+        if k in event_data and event_data[k] is not None and event_data[k] != "":
+            return True, k, event_data[k]
+
+    prefix_regex = rf"^(?:input|output)__{re.escape(root_id)}__"
+    suffix_regex = rf"__{re.escape(filter_param)}$"
+    for k, v in event_data.items():
+        if v is None or v == "":
+            continue
+        if re.search(prefix_regex, k) and re.search(suffix_regex, k):
+            return True, k, v
+
+    return False, None, None
 
 def analyze_events(
     data: Dict[str, Any], filter_param: str, root_id: str
 ) -> Tuple[int, int, List[str], List[str]]:
-    """
-    Analyze events in the JSON data.
 
-    Args:
-        data: JSON data dictionary
-        filter_param: Parameter to filter by (e.g., 'fbc')
-        root_id: Root ID to match against
-
-    Returns:
-        Tuple of (total_events, target_events, target_event_ids, failed_event_ids)
-    """
     total_events = 0
     target_events = 0
     target_event_ids = []
@@ -80,22 +95,15 @@ def analyze_events(
     for event_id, event_data in data.items():
         total_events += 1
 
-        # Check if this event has the target filter parameter
-        has_filter_param = False
+        has_match, _, _ = _has_filter_for_root(event_data, root_id, filter_param)
 
-        # Look for the filter parameter in the output querystring field
-        filter_key = f"output__{root_id}__querystring___{filter_param}"
-        if filter_key in event_data and event_data[filter_key] is not None:
-            has_filter_param = True
-
-        if has_filter_param:
+        if has_match:
             target_events += 1
             target_event_ids.append(event_id)
         else:
             failed_event_ids.append(event_id)
 
     return total_events, target_events, target_event_ids, failed_event_ids
-
 
 def format_output(
     total_events: int,
