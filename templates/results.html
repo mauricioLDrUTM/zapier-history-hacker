@@ -1,204 +1,306 @@
 {% extends "base.html" %}
-
 {% block title %}Analysis Results - JSON Event Analyzer{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-10">
-        <!-- Header -->
-        <div class="text-center mb-4">
-            <h1 class="display-5 fw-bold text-primary mb-3">
-                <i class="fas fa-chart-bar me-3"></i>Analysis Results
-            </h1>
-            <p class="lead text-muted">
-                Analysis completed for <strong>{{ results.filename }}</strong>
-            </p>
-        </div>
-
-        <!-- Analysis Parameters -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-cog me-2"></i>Analysis Parameters
-                </h5>
-                <div class="row">
-                    <div class="col-md-4">
-                        <strong>Filter Parameter:</strong> 
-                        <span class="badge bg-primary">{{ results.filter_param }}</span>
-                    </div>
-                    <div class="col-md-4">
-                        <strong>Root ID:</strong> 
-                        <span class="badge bg-secondary">{{ results.root_id }}</span>
-                    </div>
-                    <div class="col-md-4">
-                        <strong>Show IDs:</strong> 
-                        <span class="badge bg-{{ 'success' if results.show_ids else 'warning' }}">
-                            {{ 'Yes' if results.show_ids else 'No' }}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Statistics Cards -->
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="stats-card text-center">
-                    <i class="fas fa-list-ol fa-2x mb-2"></i>
-                    <h3 class="mb-1">{{ results.total_events }}</h3>
-                    <p class="mb-0">Total Events</p>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="stats-card text-center">
-                    <i class="fas fa-check-circle fa-2x mb-2"></i>
-                    <h3 class="mb-1">{{ results.target_events }}</h3>
-                    <p class="mb-0">Target Events</p>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="stats-card text-center">
-                    <i class="fas fa-percentage fa-2x mb-2"></i>
-                    <h3 class="mb-1">{{ results.success_rate }}%</h3>
-                    <p class="mb-0">Success Rate</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Progress Bar -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-chart-pie me-2"></i>Event Distribution
-                </h5>
-                <div class="progress mb-2" style="height: 30px;">
-                    <div class="progress-bar bg-success" role="progressbar" 
-                         style="width: {{ (results.target_events / results.total_events * 100) if results.total_events > 0 else 0 }}%"
-                         aria-valuenow="{{ results.target_events }}" aria-valuemin="0" aria-valuemax="{{ results.total_events }}">
-                        {{ results.target_events }} Target Events
-                    </div>
-                    <div class="progress-bar bg-warning" role="progressbar" 
-                         style="width: {{ ((results.total_events - results.target_events) / results.total_events * 100) if results.total_events > 0 else 0 }}%"
-                         aria-valuenow="{{ results.total_events - results.target_events }}" aria-valuemin="0" aria-valuemax="{{ results.total_events }}">
-                        {{ results.total_events - results.target_events }} Failed Events
-                    </div>
-                </div>
-                <div class="row text-center">
-                    <div class="col-6">
-                        <small class="text-success">
-                            <i class="fas fa-check-circle me-1"></i>
-                            {{ results.target_events }} matching events ({{ "%.1f"|format((results.target_events / results.total_events * 100) if results.total_events > 0 else 0) }}%)
-                        </small>
-                    </div>
-                    <div class="col-6">
-                        <small class="text-warning">
-                            <i class="fas fa-times-circle me-1"></i>
-                            {{ results.total_events - results.target_events }} non-matching events ({{ "%.1f"|format(((results.total_events - results.target_events) / results.total_events * 100) if results.total_events > 0 else 0) }}%)
-                        </small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Raw Output -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-code me-2"></i>Raw Output
-                </h5>
-                <pre class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">{{ results.output_content }}</pre>
-            </div>
-        </div>
-
-        {% if results.show_ids %}
-        <!-- Event IDs Details -->
-        <div class="row">
-            <!-- Target Event IDs -->
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-check-circle me-2"></i>Target Event IDs
-                            <span class="badge bg-light text-success ms-2">{{ results.target_event_ids|length }}</span>
-                        </h5>
-                    </div>
-                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
-                        {% if results.target_event_ids %}
-                            <div class="list-group list-group-flush">
-                                {% for event_id in results.target_event_ids %}
-                                <div class="list-group-item d-flex justify-content-between align-items-center">
-                                    <a href="{{ url_for('event_detail', temp_id=results.temp_id, event_id=event_id) }}" class="text-decoration-none">
-                                        <code class="text-primary">{{ event_id }}</code>
-                                    </a>
-                                    <span class="badge bg-success rounded-pill">Match</span>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            <p class="text-muted text-center">No target events found</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Failed Event IDs -->
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header bg-warning text-dark">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-times-circle me-2"></i>Failed Event IDs
-                            <span class="badge bg-light text-warning ms-2">{{ results.failed_event_ids|length }}</span>
-                        </h5>
-                    </div>
-                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
-                        {% if results.failed_event_ids %}
-                            <div class="list-group list-group-flush">
-                                {% for event_id in results.failed_event_ids %}
-                                <div class="list-group-item d-flex justify-content-between align-items-center">
-                                    <a href="{{ url_for('event_detail', temp_id=results.temp_id, event_id=event_id) }}" class="text-decoration-none">
-                                        <code class="text-primary">{{ event_id }}</code>
-                                    </a>
-                                    <span class="badge bg-warning rounded-pill">No Match</span>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            <p class="text-muted text-center">No failed events found</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Action Buttons -->
-        <div class="text-center mt-4">
-            <a href="{{ url_for('index') }}" class="btn btn-primary me-2">
-                <i class="fas fa-arrow-left me-2"></i>Analyze Another File
-            </a>
-            <button class="btn btn-outline-secondary" onclick="window.print()">
-                <i class="fas fa-print me-2"></i>Print Results
-            </button>
-        </div>
+  <div class="col-lg-10">
+    <!-- Header -->
+    <div class="text-center mb-4">
+      <h1 class="display-5 fw-bold text-primary mb-3">
+        <i class="fas fa-chart-bar me-3"></i>Analysis Results
+      </h1>
+      <p class="lead text-muted">Analysis completed for <strong>{{ results.filename }}</strong></p>
     </div>
+
+    <!-- Parameters -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-cog me-2"></i>Analysis Parameters</h5>
+        <div class="row">
+          <div class="col-md-4"><strong>Filter Parameter:</strong> <span class="badge bg-primary">{{
+              results.filter_param }}</span></div>
+          <div class="col-md-4"><strong>Root ID:</strong> <span class="badge bg-secondary">{{ results.root_id }}</span>
+          </div>
+          <div class="col-md-4">
+            <strong>Show IDs:</strong>
+            <span class="badge bg-{{ 'success' if results.show_ids else 'warning' }}">{{ 'Yes' if results.show_ids else
+              'No' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="row mb-4">
+      <div class="col-md-4">
+        <div class="stats-card text-center">
+          <i class="fas fa-list-ol fa-2x mb-2"></i>
+          <h3 class="mb-1">{{ results.total_events }}</h3>
+          <p class="mb-0">Total Events</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stats-card text-center">
+          <i class="fas fa-check-circle fa-2x mb-2"></i>
+          <h3 class="mb-1">{{ results.target_events }}</h3>
+          <p class="mb-0">Target Events</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stats-card text-center">
+          <i class="fas fa-percentage fa-2x mb-2"></i>
+          <h3 class="mb-1">{{ results.success_rate }}%</h3>
+          <p class="mb-0">Success Rate</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-chart-pie me-2"></i>Event Distribution</h5>
+        <div class="progress mb-2" style="height: 30px;">
+          <div class="progress-bar bg-success" role="progressbar"
+            style="width: {{ (results.target_events / results.total_events * 100) if results.total_events > 0 else 0 }}%">
+            {{ results.target_events }} Target Events
+          </div>
+          <div class="progress-bar bg-warning" role="progressbar"
+            style="width: {{ ((results.total_events - results.target_events) / results.total_events * 100) if results.total_events > 0 else 0 }}%">
+            {{ results.total_events - results.target_events }} Failed Events
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Raw Output (compat) -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-code me-2"></i>Raw Output</h5>
+        <pre class="bg-light p-3 rounded"
+          style="max-height: 220px; overflow-y: auto;">{{ results.output_content }}</pre>
+      </div>
+    </div>
+
+    {% if results.show_ids %}
+    <!-- Event IDs -->
+    <div class="row mb-4">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header bg-success text-white">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-check-circle me-2"></i>Target Event IDs
+              <span class="badge bg-light text-success ms-2">{{ results.target_event_ids|length }}</span>
+            </h5>
+          </div>
+          <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+            {% if results.target_event_ids %}
+            <div class="list-group list-group-flush">
+              {% for event_id in results.target_event_ids %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('event_detail', temp_id=results.temp_id, event_id=event_id) }}"
+                  class="text-decoration-none">
+                  <code class="text-primary">{{ event_id }}</code>
+                </a>
+                <span class="badge bg-success rounded-pill">Match</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted text-center">No target events found</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header bg-warning text-dark">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-times-circle me-2"></i>Failed Event IDs
+              <span class="badge bg-light text-warning ms-2">{{ results.failed_event_ids|length }}</span>
+            </h5>
+          </div>
+          <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+            {% if results.failed_event_ids %}
+            <div class="list-group list-group-flush">
+              {% for event_id in results.failed_event_ids %}
+              <div class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('event_detail', temp_id=results.temp_id, event_id=event_id) }}"
+                  class="text-decoration-none">
+                  <code class="text-primary">{{ event_id }}</code>
+                </a>
+                <span class="badge bg-warning rounded-pill">No Match</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted text-center">No failed events found</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-terminal me-2"></i>Interpreter (DSL)</h5>
+
+        <div class="mb-2">
+          <label class="form-label fw-bold">Query</label>
+          <textarea id="dslInput" class="form-control" rows="3"
+            placeholder='where event_name == "Schedule" and isfire == "yes" | count by status'></textarea>
+          <div class="form-text">
+            Examples:
+            <code>where event_name == "Schedule" and isfire == "yes" | select *</code> ·
+            <code>where event_name == "Schedule" and isfire == "yes" | count by status</code> ·
+            <code>where isfire == "yes" | group by status</code>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <button type="button" class="btn btn-outline-primary btn-sm preset"
+            data-dsl='where event_name == "Schedule" and isfire == "yes" | select *'>
+            Preset: Schedule + isFire
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm preset"
+            data-dsl='where event_name == "Schedule" and isfire == "yes" | count by status'>
+            Preset: Count by Status
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm preset"
+            data-dsl='where isfire == "yes" | group by status'>
+            Preset: Group by Status
+          </button>
+          <button id="catalogBtn" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-book me-2"></i>View Catalog
+          </button>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button id="runQueryBtn" class="btn btn-primary">
+            <i class="fas fa-play me-2"></i>Run
+          </button>
+          <button id="exportXlsxBtn" class="btn btn-outline-success">
+            <i class="fas fa-file-excel me-2"></i>Export XLSX
+          </button>
+          <button id="exportCsvBtn" class="btn btn-outline-secondary">
+            <i class="fas fa-file-csv me-2"></i>Export CSV
+          </button>
+        </div>
+
+        <div id="queryMeta" class="mt-3"></div>
+        <div class="table-responsive mt-2" id="queryTableWrap" style="display:none;">
+          <table class="table table-sm table-striped" id="queryTable"></table>
+        </div>
+
+        <pre id="catalogOut" class="bg-light p-2 rounded mt-3"
+          style="max-height:250px; overflow:auto; display:none;"></pre>
+      </div>
+    </div>
+
+
+    <div class="text-center mt-4">
+      <a href="{{ url_for('index') }}" class="btn btn-primary me-2">
+        <i class="fas fa-arrow-left me-2"></i>Analyze Another File
+      </a>
+      <button class="btn btn-outline-secondary" onclick="window.print()">
+        <i class="fas fa-print me-2"></i>Print Results
+      </button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-@media print {
-    .btn, .navbar, .footer {
-        display: none !important;
+  @media print {
+
+    .btn,
+    .navbar,
+    .footer {
+      display: none !important;
     }
+
     .main-container {
-        box-shadow: none !important;
-        background: white !important;
+      box-shadow: none !important;
+      background: white !important;
     }
+
     .stats-card {
-        background: #f8f9fa !important;
-        color: #333 !important;
-        border: 1px solid #dee2e6 !important;
+      background: #f8f9fa !important;
+      color: #333 !important;
+      border: 1px solid #dee2e6 !important;
     }
-}
+  }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Guardar temp_id para usar el intérprete y otras llamadas
+  sessionStorage.setItem('json_temp_id', '{{ results.temp_id }}');
+
+  (function () {
+    const tempId = '{{ results.temp_id }}';
+    const dslInput = document.getElementById('dslInput');
+    const runBtn = document.getElementById('runQueryBtn');
+    const exportXlsxBtn = document.getElementById('exportXlsxBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const presets = document.querySelectorAll('.preset');
+    const tableWrap = document.getElementById('queryTableWrap');
+    const table = document.getElementById('queryTable');
+    const metaDiv = document.getElementById('queryMeta');
+    const catalogBtn = document.getElementById('catalogBtn');
+    const catalogOut = document.getElementById('catalogOut');
+
+    presets.forEach(b => b.addEventListener('click', () => { dslInput.value = b.dataset.dsl || ''; }));
+
+    function renderRows(rows) {
+      if (!rows || rows.length === 0) { tableWrap.style.display = 'none'; table.innerHTML = ''; return; }
+      const cols = [...new Set(rows.flatMap(r => Object.keys(r)))];
+      const thead = '<thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+      const tbody = '<tbody>' + rows.map(r => '<tr>' + cols.map(c => `<td class="text-break">${r[c] ?? ''}</td>`).join('') + '</tr>').join('') + '</tbody>';
+      table.innerHTML = thead + tbody; tableWrap.style.display = '';
+    }
+
+    async function runQuery(exportFmt) {
+      const dsl = (dslInput.value || '').trim();
+      if (!dsl) { alert('Escribe una consulta DSL.'); return; }
+      metaDiv.innerHTML = `<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Procesando...</div>`;
+
+      if (!exportFmt) {
+        const res = await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_id: tempId, dsl }) });
+        const data = await res.json();
+        if (!res.ok || data.error) { metaDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Desconocido'}</div>`; renderRows([]); return; }
+        const result = data.result || {};
+        renderRows(result.rows || []);
+        metaDiv.innerHTML = `
+        <div class="alert alert-success">
+          <div><strong>Filas:</strong> ${(result.rows || []).length}</div>
+          ${result.meta?.group_by ? `<div><strong>Group by:</strong> ${result.meta.group_by.join(', ')}</div>` : ''}
+          ${result.meta?.count ? `<div><strong>Count:</strong> Yes</div>` : ''}
+        </div>`;
+      } else {
+        const res = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_id: tempId, dsl, format: exportFmt }) });
+        if (!res.ok) { const data = await res.json().catch(() => ({})); metaDiv.innerHTML = `<div class="alert alert-danger">Error al exportar: ${data.error || res.statusText}</div>`; return; }
+        const blob = await res.blob(); const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = exportFmt === 'csv' ? 'query.csv' : 'query.xlsx';
+        document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
+        metaDiv.innerHTML = `<div class="alert alert-success">File exported.</div>`;
+      }
+    }
+
+    runBtn.addEventListener('click', () => runQuery(null));
+    exportXlsxBtn.addEventListener('click', () => runQuery('xlsx'));
+    exportCsvBtn.addEventListener('click', () => runQuery('csv'));
+
+    catalogBtn.addEventListener('click', async () => {
+      catalogOut.style.display = 'block';
+      catalogOut.textContent = 'Cargando catálogo...';
+      const res = await fetch('/api/catalog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_id: tempId }) });
+      const data = await res.json();
+      catalogOut.textContent = res.ok ? JSON.stringify(data.catalog, null, 2) : (data.error || 'Error');
+    });
+  })();
+</script>
 {% endblock %}
