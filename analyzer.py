@@ -44,30 +44,17 @@ def normalize_events(raw: dict):
             "zap_url": zap_url,
         }
 
-        # ---------- NEW canonical fields ----------
+        # Add only the event_name and isfire fields (skip the root and bool variants)
         obj_root = str(event_data.get("object_id") or "")
-        # event_name: prefer output__<object_id>__event_name, else any output__*__event_name
-        ev_name, ev_root = _first_output_scalar(
+        ev_name, _ = _first_output_scalar(
             event_data, "event_name", prefer_root=obj_root
         )
-        # also look in filter meta samples if needed (optional)
-        if not ev_name:
-            # a light fallback: scan *_filter_meta sample for something looking like an event name
-            for k, v in event_data.items():
-                if k.startswith("output__") and "filter_meta" in k and _is_scalar(v):
-                    # usually filter_meta is list; ignore here to stay strict
-                    pass
-        # isfire
-        isfire_s, isfire_root = _first_output_scalar(
+        isfire_s, _ = _first_output_scalar(
             event_data, "isfire", prefer_root=None
         )
-        isfire_b = _to_bool_like(isfire_s)
 
         base["event_name"] = ev_name  # e.g., "CompleteRegistration"
-        base["event_name_root"] = ev_root  # e.g., "293331043"
         base["isfire"] = isfire_s  # e.g., "yes"
-        base["isfire_bool"] = isfire_b  # True/False/None
-        base["isfire_root"] = isfire_root  # e.g., "320194358"
         # ---------- /NEW canonical fields ----------
 
         rows.append(base)
