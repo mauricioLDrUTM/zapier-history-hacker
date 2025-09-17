@@ -403,23 +403,29 @@ def api_analyze_advanced():
 # -------------------------- Intérprete (DSL) --------------------------
 @app.route("/api/catalog", methods=["POST"])
 def api_catalog():
-    payload = request.get_json() or {}
-    temp_id = payload.get("temp_id")
-    if not temp_id or temp_id not in TEMP_DATA_FILES:
-        return jsonify({"error": "invalid temp_id"}), 400
-
-    path = TEMP_DATA_FILES[temp_id]
     try:
-        with open(path, "rb") as f:
-            json_data = pickle.load(f)
+        payload = request.get_json() or {}
+        temp_id = payload.get("temp_id")
+        if not temp_id or temp_id not in TEMP_DATA_FILES:
+            return jsonify({"error": "invalid temp_id"}), 400
+
+        path = TEMP_DATA_FILES[temp_id]
+        try:
+            with open(path, "rb") as f:
+                json_data = pickle.load(f)
+        except Exception as e:
+            return jsonify({"error": f"could not load data: {e}"}), 500
+
+        # normalize events into dataframe and build catalog
+        try:
+            df_events, _ = normalize_events(json_data)
+            catalog = build_catalog(df_events)
+            return jsonify({"ok": True, "catalog": catalog})
+        except Exception as e:
+            return jsonify({"error": f"error building catalog: {str(e)}"}), 500
+            
     except Exception as e:
-        return jsonify({"error": f"could not load data: {e}"}), 500
-
-    # normalize events into dataframe
-    df_events, _ = normalize_events(json_data)
-
-    catalog = build_catalog(df_events)
-    return jsonify({"ok": True, "catalog": catalog})
+        return jsonify({"error": f"unexpected error: {str(e)}"}), 500
 
 @app.route("/api/query", methods=["POST"])
 def api_query():

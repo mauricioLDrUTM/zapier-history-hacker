@@ -16,12 +16,32 @@ def normalize_events(raw: dict):
     kv_rows = []
 
     for event_id, event_data in raw.items():
+        # Find input event ID from output__*__event_id fields
+        input_event_id = None
+        email = None
+        event_url = None
+        zap_url = None
+
+        for key, value in event_data.items():
+            if key.startswith("output__") and key.endswith("__event_id"):
+                input_event_id = value
+            elif key.endswith("__primary_email"):
+                email = value
+            elif key.endswith("__event_url"):
+                event_url = value
+            elif key.endswith("__parent_task_history_link"):
+                zap_url = value
+
         base = {
             "event_id": event_id,
+            "input_event_id": input_event_id,
             "date": event_data.get("date"),
             "status": event_data.get("status"),
             "object_id": event_data.get("object_id"),
             "object_title": event_data.get("object_title"),
+            "email": email,
+            "event_url": event_url,
+            "zap_url": zap_url,
         }
 
         # ---------- NEW canonical fields ----------
@@ -82,6 +102,7 @@ def _value_counts_safe(s: pd.Series, top: int | None = None) -> dict:
 
 def build_catalog(df_events: pd.DataFrame) -> dict:
     cat = {"columns": list(df_events.columns), "events_counts": {}}
+    
     if "status" in df_events:
         cat["events_counts"]["by_status"] = _value_counts_safe(df_events["status"])
     if "event_name" in df_events:
