@@ -21,6 +21,19 @@ def normalize_events(raw: dict):
         email = None
         event_url = None
         zap_url = None
+        
+        # Facebook tracking fields
+        fbc = None
+        fbp = None
+        ip_address = None
+        landing_url = None
+        user_agent = None
+        
+        # UTM tracking fields
+        utm_campaign = None
+        utm_content = None
+        utm_medium = None
+        utm_source = None
 
         for key, value in event_data.items():
             if key.startswith("output__") and key.endswith("__event_id"):
@@ -31,6 +44,26 @@ def normalize_events(raw: dict):
                 event_url = value
             elif key.endswith("__parent_task_history_link"):
                 zap_url = value
+            # Facebook tracking fields
+            elif key.endswith("__handl_fbc"):
+                fbc = value
+            elif key.endswith("__handl_fbp"):
+                fbp = value
+            elif key.endswith("__handl_ip"):
+                ip_address = value
+            elif key.endswith("__handl_url"):
+                landing_url = value
+            elif key.endswith("__handl_user_agent"):
+                user_agent = value
+            # UTM tracking fields
+            elif key.endswith("__handl_utm_campaign"):
+                utm_campaign = value
+            elif key.endswith("__handl_utm_content"):
+                utm_content = value
+            elif key.endswith("__handl_utm_medium"):
+                utm_medium = value
+            elif key.endswith("__handl_utm_source"):
+                utm_source = value
 
         base = {
             "event_id": event_id,
@@ -42,6 +75,17 @@ def normalize_events(raw: dict):
             "email": email,
             "event_url": event_url,
             "zap_url": zap_url,
+            # Facebook tracking
+            "fbc": fbc,
+            "fbp": fbp,
+            "ip_address": ip_address,
+            "landing_url": landing_url,
+            "user_agent": user_agent,
+            # UTM tracking
+            "utm_campaign": utm_campaign,
+            "utm_content": utm_content,
+            "utm_medium": utm_medium,
+            "utm_source": utm_source,
         }
 
         # Add only the event_name and isfire fields (skip the root and bool variants)

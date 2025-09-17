@@ -180,17 +180,12 @@
           <button id="runQueryBtn" class="btn btn-primary">
             <i class="fas fa-play me-2"></i>Run
           </button>
-          <button id="exportXlsxBtn" class="btn btn-outline-success">
-            <i class="fas fa-file-excel me-2"></i>Export XLSX
-          </button>
-          <button id="exportCsvBtn" class="btn btn-outline-secondary">
-            <i class="fas fa-file-csv me-2"></i>Export CSV
-          </button>
+  
         </div>
 
         <div id="queryMeta" class="mt-3"></div>
         <div class="table-responsive mt-2" id="queryTableWrap" style="display:none;">
-          <table class="table table-sm table-striped" id="queryTable"></table>
+          <table class="table table-sm table-striped table-hover" id="queryTable"></table>
         </div>
 
         <pre id="catalogOut" class="bg-light p-2 rounded mt-3"
@@ -213,6 +208,73 @@
 
 {% block extra_css %}
 <style>
+  /* DataTables custom styling */
+  .dataTables_wrapper .dt-buttons {
+    margin-bottom: 1rem;
+  }
+  .dataTables_wrapper .dataTables_filter {
+    margin-bottom: 1rem;
+  }
+  .dataTables_wrapper .table thead th {
+    position: relative;
+    padding-top: 3rem;  /* Space for the filter input */
+  }
+  .dataTables_wrapper .table thead th input {
+    position: absolute;
+    top: 0.5rem;
+    left: 0;
+    width: 100%;
+    padding: 0.25rem;
+  }
+  .dataTables_wrapper .btn-group > .btn {
+    margin: 0.25rem;
+  }
+  .dataTables_info {
+    padding-top: 0.5rem !important;
+  }
+
+  /* Tooltip and truncation styles */
+  .copyable-text {
+    cursor: pointer;
+  }
+  .copy-tooltip {
+    display: none;
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    z-index: 1000;
+    max-width: 400px;
+    white-space: normal;
+    word-break: break-word;
+    top: 100%;
+    left: 0;
+    margin-top: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+  .copyable-text:hover .copy-tooltip,
+  .position-relative:hover .copy-tooltip {
+    display: block;
+  }
+  .copied-feedback {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    z-index: 1100;
+  }
+
+  /* Table row hover effect */
+  .table tbody tr:hover {
+    background-color: rgba(0,0,0,0.075);
+  }
+
+  /* Print styles */
   @media print {
 
     .btn,
@@ -286,17 +348,225 @@
       return html;
     }
 
+    let dataTable = null;
+
     function renderRows(rows) {
-      if (!rows || rows.length === 0) { tableWrap.style.display = 'none'; table.innerHTML = ''; return; }
+      if (!rows || rows.length === 0) { 
+        tableWrap.style.display = 'none'; 
+        table.innerHTML = ''; 
+        return; 
+      }
       
       // Get all columns first
       const allCols = [...new Set(rows.flatMap(r => Object.keys(r)))];
       
-      // Define columns to exclude
-      const excludedCols = ['isfire_root', 'event_name_root', 'isfire_bool', 'object_title', 'object_id'];
+      // Define columns to exclude from grid display (but keep in exports)
+      const excludedCols = [
+        'isfire_root', 'event_name_root', 'isfire_bool',
+        'fbc', 'fbp', 'ip_address', 'landing_url', 'user_agent',
+        'utm_campaign', 'utm_content', 'utm_medium', 'utm_source'
+      ];
       
       // Filter out excluded columns
       const cols = allCols.filter(col => !excludedCols.includes(col));
+      
+      // Create column definitions for DataTables
+      // Helper function to truncate text
+      function truncateText(text, maxLength = 100) {
+        if (text && text.length > maxLength) {
+          return text.substring(0, maxLength) + '...';
+        }
+        return text;
+      }
+
+      const columns = cols.map(col => ({
+        data: col,
+        title: col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        className: col === 'date' ? 'text-nowrap' : 'text-break position-relative',
+        render: function(data, type, row) {
+          if (type === 'display') {
+            if (data == null) return '';
+            
+            // Format date column
+            if (col === 'date' && data) {
+              try {
+                const date = new Date(data);
+                return new Intl.DateTimeFormat('es-MX', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false
+                }).format(date);
+              } catch (e) {
+                return data;
+              }
+            }
+
+            // Format URLs as links
+            if ((col === 'event_url' || col === 'zap_url') && data) {
+              const url = new URL(data);
+              const truncatedUrl = truncateText(url.pathname, 30);
+              return `<div class="position-relative">
+                <a href="${data}" target="_blank" class="text-truncate d-inline-block" style="max-width: 200px;">
+                  <i class="fas fa-external-link-alt me-1"></i>${url.hostname}${truncatedUrl}
+                </a>
+                <div class="copy-tooltip" role="tooltip">${data}</div>
+              </div>`;
+            }
+            
+            // Email as link
+            if (col === 'email' && data) {
+              return `<a href="mailto:${data}" class="text-truncate d-inline-block">
+                <i class="fas fa-envelope me-1"></i>${data}
+              </a>`;
+            }
+
+            // Default truncation for other columns
+            const fullText = String(data);
+            if (fullText.length > 100) {
+              return `<div class="position-relative copyable-text" data-full-text="${fullText}">
+                <span>${truncateText(fullText)}</span>
+                <div class="copy-tooltip" role="tooltip">${fullText}</div>
+              </div>`;
+            }
+          }
+          return data;
+        }
+      }));
+
+      // Destroy existing DataTable if it exists
+      if (dataTable) {
+        dataTable.destroy();
+        table.innerHTML = '';
+      }
+      
+      // Create the table structure
+      table.innerHTML = '<thead><tr>' + cols.map(c => `<th>${c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>`).join('') + '</tr></thead>';
+      tableWrap.style.display = '';
+      
+      // Add click-to-copy functionality
+      $(table).on('click', '.copyable-text', function() {
+        const text = $(this).data('full-text');
+        navigator.clipboard.writeText(text).then(() => {
+          // Show feedback
+          const feedback = $('<div class="copied-feedback">Texto copiado al portapapeles</div>');
+          $('body').append(feedback);
+          setTimeout(() => feedback.fadeOut('fast', function() { $(this).remove(); }), 2000);
+        });
+      });
+
+      // Initialize DataTable with enhanced features
+      dataTable = $(table).DataTable({
+        data: rows,
+        columns: columns,
+        pageLength: 15,
+        orderCellsTop: true,
+        fixedHeader: true,
+        dom: '<"row"<"col-sm-12 col-md-6"B><"col-sm-12 col-md-6"f>>rt<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"p>>',
+        buttons: [
+          {
+            extend: 'collection',
+            text: '<i class="fas fa-download me-1"></i>Export',
+            buttons: [
+              {
+                extend: 'copy',
+                text: '<i class="fas fa-copy me-1"></i>Copy',
+                className: 'btn btn-sm'
+              },
+              {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel me-1"></i>Excel',
+                className: 'btn btn-sm'
+              },
+              {
+                extend: 'csv',
+                text: '<i class="fas fa-file-csv me-1"></i>CSV',
+                className: 'btn btn-sm'
+              },
+              {
+                extend: 'print',
+                text: '<i class="fas fa-print me-1"></i>Print',
+                className: 'btn btn-sm'
+              }
+            ],
+            className: 'btn btn-secondary'
+          }
+        ],
+        order: [[cols.indexOf('date'), 'desc']], // Sort by date desc by default
+        language: {
+          search: "🔍 Buscar:",
+          lengthMenu: "Mostrar _MENU_ registros",
+          zeroRecords: "No se encontraron registros",
+          info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+          infoEmpty: "Mostrando 0 a 0 de 0 registros",
+          infoFiltered: "(filtrado de _MAX_ registros totales)",
+          paginate: {
+            first: "Primero",
+            last: "Último",
+            next: "Siguiente",
+            previous: "Anterior"
+          }
+        },
+        initComplete: function() {
+          // Add a row for column-specific filtering
+          this.api().columns().every(function() {
+            let column = this;
+            let title = $(column.header()).text();
+            
+            // Create input element for filtering
+            const input = $('<input type="text" class="form-control form-control-sm" placeholder="Filtrar '+title+'" />')
+              .appendTo($(column.header()))
+              .on('keyup change', function() {
+                if (column.search() !== this.value) {
+                  column.search(this.value).draw();
+                }
+              });
+          });
+        }
+      });
+
+      // Add custom complete export button
+      const completeExportBtn = $('<button class="btn btn-success btn-sm ms-2"><i class="fas fa-file-excel me-1"></i>Export results (Excel)</button>');
+      $(tableWrap).find('.dt-buttons').append(completeExportBtn);
+      
+      completeExportBtn.on('click', function() {
+        // Export all data including hidden columns
+        const allData = rows.map(row => {
+          const exportRow = {};
+          allCols.forEach(col => {
+            const displayName = col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            exportRow[displayName] = row[col] || '';
+          });
+          return exportRow;
+        });
+        
+        // Create Excel file
+        const ws = XLSX.utils.json_to_sheet(allData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Complete Data');
+        
+        // Auto-size columns
+        const colWidths = [];
+        Object.keys(allData[0] || {}).forEach((key, i) => {
+          const maxLength = Math.max(
+            key.length,
+            ...allData.map(row => String(row[key] || '').length)
+          );
+          colWidths.push({ wch: Math.min(maxLength + 2, 50) });
+        });
+        ws['!cols'] = colWidths;
+        
+        // Download file
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        XLSX.writeFile(wb, `complete_data_${timestamp}.xlsx`);
+        
+        // Show feedback
+        const feedback = $('<div class="copied-feedback">Excel completo exportado exitosamente</div>');
+        $('body').append(feedback);
+        setTimeout(() => feedback.fadeOut('fast', function() { $(this).remove(); }), 3000);
+      });
       
       // Function to format cell content
       function formatCell(col, value) {
@@ -352,7 +622,7 @@
         </div>`;
       } else {
         const res = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_id: tempId, dsl, format: exportFmt }) });
-        if (!res.ok) { const data = await res.json().catch(() => ({})); metaDiv.innerHTML = `<div class="alert alert-danger">Error al exportar: ${data.error || res.statusText}</div>`; return; }
+        if (!res.ok) { const data = await res.json().catch(() => ({})); metaDiv.innerHTML = `<div class="alert alert-danger">Error exporting: ${data.error || res.statusText}</div>`; return; }
         const blob = await res.blob(); const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = exportFmt === 'csv' ? 'query.csv' : 'query.xlsx';
         document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
