@@ -244,42 +244,33 @@ def upload_file():
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(filepath)
 
-    filter_param = request.form.get("filter_param", "").strip()
-    root_id = request.form.get("root_id", "").strip()
     show_ids = request.form.get("show_ids") == "on"
-
-    if not filter_param or not root_id:
-        flash("Please provide both filter parameter and root ID", "error")
-        return redirect(url_for("index"))
 
     try:
         data = load_json_file(filepath)
 
+        # Store the data for DSL analysis
         temp_id = str(uuid.uuid4())
         temp_file = os.path.join(tempfile.gettempdir(), f"json_data_{temp_id}.pkl")
         with open(temp_file, "wb") as f:
             pickle.dump(data, f)
         TEMP_DATA_FILES[temp_id] = temp_file
 
-        total_events, target_events, target_ids, failed_ids = analyze_events(
-            data, filter_param, root_id
-        )
-
-        output_content = format_output(
-            total_events, target_events, target_ids, failed_ids, show_ids
-        )
-        success_rate = (target_events / total_events * 100) if total_events > 0 else 0.0
-
+        # For backward compatibility, run a basic analysis if no DSL is used
+        # This is mainly for the legacy "show_ids" feature
+        total_events = len(data)
+        
+        # Create basic results for legacy compatibility
         results = {
             "total_events": total_events,
-            "target_events": target_events,
-            "success_rate": round(success_rate, 2),
-            "target_event_ids": target_ids,
-            "failed_event_ids": failed_ids,
-            "output_content": output_content,
+            "target_events": 0,  # Will be calculated via DSL queries
+            "success_rate": 0.0,
+            "target_event_ids": [],
+            "failed_event_ids": [],
+            "output_content": f"total events: {total_events}\nUse the DSL interpreter below to analyze your data.",
             "filename": filename,
-            "filter_param": filter_param,
-            "root_id": root_id,
+            "filter_param": "N/A (use DSL queries)",
+            "root_id": "N/A (use DSL queries)", 
             "show_ids": show_ids,
             "temp_id": temp_id,
         }

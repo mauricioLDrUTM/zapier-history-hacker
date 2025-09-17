@@ -21,6 +21,7 @@ def normalize_events(raw: dict):
         email = None
         event_url = None
         zap_url = None
+        updated_by_name = None
         
         # Facebook tracking fields
         fbc = None
@@ -44,6 +45,9 @@ def normalize_events(raw: dict):
                 event_url = value
             elif key.endswith("__parent_task_history_link"):
                 zap_url = value
+            elif key.endswith("__updated_by_name") and updated_by_name is None:
+                # Only extract once per event (first occurrence)
+                updated_by_name = value
             # Facebook tracking fields
             elif key.endswith("__handl_fbc"):
                 fbc = value
@@ -75,6 +79,7 @@ def normalize_events(raw: dict):
             "email": email,
             "event_url": event_url,
             "zap_url": zap_url,
+            "updated_by_name": updated_by_name,
             # Facebook tracking
             "fbc": fbc,
             "fbp": fbp,
