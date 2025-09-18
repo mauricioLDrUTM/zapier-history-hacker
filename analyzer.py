@@ -35,6 +35,11 @@ def normalize_events(raw: dict):
         utm_content = None
         utm_medium = None
         utm_source = None
+        
+        # Contact information fields
+        contact_name = None
+        contact_phone = None
+        contact_phone_country = None
 
         for key, value in event_data.items():
             if key.startswith("output__") and key.endswith("__event_id"):
@@ -68,6 +73,13 @@ def normalize_events(raw: dict):
                 utm_medium = value
             elif key.endswith("__handl_utm_source"):
                 utm_source = value
+            # Contact information fields
+            elif key.endswith("__lead__contact__name") and contact_name is None:
+                contact_name = value
+            elif key.endswith("__lead__contact__phone__phone") and contact_phone is None:
+                contact_phone = value
+            elif key.endswith("__lead__contact__phone__country") and contact_phone_country is None:
+                contact_phone_country = value
 
         base = {
             "event_id": event_id,
@@ -91,6 +103,10 @@ def normalize_events(raw: dict):
             "utm_content": utm_content,
             "utm_medium": utm_medium,
             "utm_source": utm_source,
+            # Contact information
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "contact_phone_country": contact_phone_country,
         }
 
         # Add only the event_name and isfire fields (skip the root and bool variants)
