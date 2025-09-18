@@ -111,6 +111,54 @@
           </div>
         </div>
 
+        <!-- Interactive Event Discovery -->
+        <div class="card mb-3" id="eventDiscoveryCard" style="display:none;">
+          <div class="card-header bg-info text-white">
+            <h6 class="card-title mb-0">
+              <i class="fas fa-lightbulb me-2"></i>Discovered Event Types
+              <small class="opacity-75">Click to build queries</small>
+            </h6>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6><i class="fas fa-fire me-1"></i>Event Names <span id="eventNameCount" class="badge bg-primary"></span></h6>
+                <div id="eventNamesList" class="d-flex flex-wrap gap-1 mb-3"></div>
+              </div>
+              <div class="col-md-6">
+                <h6><i class="fas fa-toggle-on me-1"></i>Status Values <span id="statusCount" class="badge bg-success"></span></h6>
+                <div id="statusList" class="d-flex flex-wrap gap-1 mb-3"></div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6">
+                <h6><i class="fas fa-check-circle me-1"></i>Fire Status <span id="fireStatusCount" class="badge bg-warning"></span></h6>
+                <div id="fireStatusList" class="d-flex flex-wrap gap-1 mb-3"></div>
+              </div>
+              <div class="col-md-6">
+                <h6><i class="fas fa-calendar me-1"></i>Date Range</h6>
+                <div id="dateRangeInfo" class="text-muted small"></div>
+              </div>
+            </div>
+            
+            <!-- DSL Builder -->
+            <div class="mt-3 p-3 bg-light rounded">
+              <h6><i class="fas fa-tools me-1"></i>Query Builder</h6>
+              <div id="dslBuilder" class="mb-2">
+                <span class="text-muted">Click on event types above to build your query...</span>
+              </div>
+              <div class="d-flex gap-2">
+                <button id="clearBuilderBtn" class="btn btn-outline-secondary btn-sm">
+                  <i class="fas fa-eraser me-1"></i>Clear
+                </button>
+                <button id="useBuiltQueryBtn" class="btn btn-primary btn-sm">
+                  <i class="fas fa-arrow-up me-1"></i>Use Query
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Query Results -->
         <div id="queryMeta" class="mt-3"></div>
         <div class="table-responsive mt-3" id="queryTableWrap" style="display:none;">
@@ -157,6 +205,53 @@
   }
   .dataTables_paginate .pagination {
     margin: 0;
+  }
+
+  /* Event Discovery Styling */
+  .event-chip {
+    background: #e7f3ff;
+    border: 1px solid #b3d9ff;
+    color: #0056b3;
+    padding: 0.25rem 0.5rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .event-chip:hover {
+    background: #b3d9ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .event-chip.active {
+    background: #0056b3;
+    color: white;
+  }
+  .event-chip .count {
+    background: rgba(0,0,0,0.2);
+    padding: 0.1rem 0.3rem;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: bold;
+  }
+  .dsl-token {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 0.2rem 0.4rem;
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    margin: 0.1rem;
+    display: inline-block;
+  }
+  .dsl-operator {
+    color: #6f42c1;
+    font-weight: bold;
+    margin: 0 0.25rem;
   }
 
   /* Tooltip and truncation styles */
@@ -245,6 +340,13 @@
     let dataTable = null;
     let allQueryData = []; // Store all data for "show all" functionality
     let currentQueryDsl = ''; // Store current query for re-fetching
+    let eventDiscovery = {}; // Store discovered event types
+    let dslBuilderState = {
+      eventNames: [],
+      statuses: [],
+      fireStatuses: [],
+      operator: 'and'
+    };
 
     function renderRows(rows, shouldStoreAllData = false) {
       if (!rows || rows.length === 0) { 
@@ -266,7 +368,13 @@
       
       // Get all columns first
       const allCols = [...new Set(rows.flatMap(r => Object.keys(r)))];
+      console.log('🔍 DEBUG - All columns found:', allCols);
+      console.log('🔍 DEBUG - Total columns count:', allCols.length);
       
+      // Check specifically for contact fields
+      const contactFields = allCols.filter(col => col.includes('contact'));
+      console.log('🔍 DEBUG - Contact fields found:', contactFields);
+
       // Define columns to exclude from grid display (but keep in exports)
       const excludedCols = [
         'isfire_root', 'event_name_root', 'isfire_bool',
@@ -277,6 +385,9 @@
       
       // Filter out excluded columns
       const cols = allCols.filter(col => !excludedCols.includes(col));
+      console.log('🔍 DEBUG - Columns after exclusion filter:', cols);
+      console.log('🔍 DEBUG - Excluded columns:', excludedCols);
+      console.log('🔍 DEBUG - Contact fields in final cols:', cols.filter(col => col.includes('contact')));
       
       // Helper function to truncate text
       function truncateText(text, maxLength = 100) {
@@ -333,6 +444,53 @@
               return `<a href="mailto:${data}" class="text-truncate d-inline-block">
                 <i class="fas fa-envelope me-1"></i>${data}
               </a>`;
+            }
+
+            // Contact name
+            if (col === 'contact_name' && data) {
+              return `<div class="d-flex align-items-center">
+                <i class="fas fa-user me-1 text-info"></i>${data}
+              </div>`;
+            }
+
+            // Phone number with formatting
+            if (col === 'contact_phone' && data) {
+              // Try to format phone number nicely
+              let displayPhone = data;
+              if (data.startsWith('+1') && data.length === 12) {
+                // US phone number formatting: +1 (XXX) XXX-XXXX
+                displayPhone = `+1 (${data.slice(2,5)}) ${data.slice(5,8)}-${data.slice(8)}`;
+              }
+              return `<div class="d-flex align-items-center">
+                <i class="fas fa-phone me-1 text-success"></i>
+                <a href="tel:${data}" class="text-decoration-none">${displayPhone}</a>
+              </div>`;
+            }
+
+            // Phone country with flag
+            if (col === 'contact_phone_country' && data) {
+              // Add country flag emoji if available
+              const countryFlags = {
+                'US': '🇺🇸',
+                'CA': '🇨🇦',
+                'MX': '🇲🇽',
+                'GB': '🇬🇧',
+                'AU': '🇦🇺',
+                'DE': '🇩🇪',
+                'FR': '🇫🇷',
+                'IT': '🇮🇹',
+                'ES': '🇪🇸',
+                'BR': '🇧🇷',
+                'AR': '🇦🇷',
+                'IN': '🇮🇳',
+                'CN': '🇨🇳',
+                'JP': '🇯🇵',
+                'KR': '🇰🇷'
+              };
+              const flag = countryFlags[data] || '🌍';
+              return `<div class="d-flex align-items-center">
+                <span class="me-1">${flag}</span>${data}
+              </div>`;
             }
 
             // Default truncation for other columns
@@ -450,6 +608,10 @@
       completeExportBtn.on('click', function() {
         // Export all data including hidden columns - use allQueryData instead of rows
         const exportData = allQueryData.length > 0 ? allQueryData : rows;
+        console.log('🔍 DEBUG - Export: Total rows to export:', exportData.length);
+        console.log('🔍 DEBUG - Export: Sample row keys:', exportData.length > 0 ? Object.keys(exportData[0]) : 'No data');
+        console.log('🔍 DEBUG - Export: allCols for export:', allCols);
+        
         const allData = exportData.map(row => {
           const exportRow = {};
           allCols.forEach(col => {
@@ -458,6 +620,9 @@
           });
           return exportRow;
         });
+        
+        console.log('🔍 DEBUG - Export: Sample export row keys:', Object.keys(allData[0] || {}));
+        console.log('🔍 DEBUG - Export: Contact fields in export:', Object.keys(allData[0] || {}).filter(key => key.toLowerCase().includes('contact')));
         
         // Create Excel file
         const ws = XLSX.utils.json_to_sheet(allData);
@@ -501,6 +666,11 @@
         
         const result = data.result || {};
         const allRows = result.rows || [];
+        console.log('🔍 DEBUG - API Response: Total rows received:', allRows.length);
+        console.log('🔍 DEBUG - API Response: Sample row:', allRows.length > 0 ? allRows[0] : 'No data');
+        console.log('🔍 DEBUG - API Response: Sample row keys:', allRows.length > 0 ? Object.keys(allRows[0]) : 'No data');
+        console.log('🔍 DEBUG - API Response: Contact fields in sample row:', 
+          allRows.length > 0 ? Object.keys(allRows[0]).filter(key => key.includes('contact')) : 'No data');
         
         // For initial load, limit to first 100 records for performance
         const initialLoadLimit = 100;
@@ -537,6 +707,234 @@
     runBtn.addEventListener('click', () => runQuery(null));
     exportXlsxBtn.addEventListener('click', () => runQuery('xlsx'));
     exportCsvBtn.addEventListener('click', () => runQuery('csv'));
+
+    // Event Discovery Functions
+    function analyzeEventTypes() {
+      const tempIdForAnalysis = '{{ results.temp_id }}';
+      
+      // Analyze the uploaded data for event discovery
+      fetch('/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          temp_id: tempIdForAnalysis, 
+          dsl: 'select *' // Get all data for analysis
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.result && data.result.rows) {
+          processEventDiscovery(data.result.rows);
+          displayEventDiscovery();
+          document.getElementById('eventDiscoveryCard').style.display = 'block';
+        }
+      })
+      .catch(err => console.error('Event analysis failed:', err));
+    }
+
+    function processEventDiscovery(rows) {
+      const eventNames = {};
+      const statuses = {};
+      const fireStatuses = {};
+      const dates = [];
+
+      rows.forEach(row => {
+        // Count event names
+        if (row.event_name) {
+          eventNames[row.event_name] = (eventNames[row.event_name] || 0) + 1;
+        }
+        
+        // Count statuses
+        if (row.status) {
+          statuses[row.status] = (statuses[row.status] || 0) + 1;
+        }
+        
+        // Count fire statuses
+        if (row.isfire) {
+          fireStatuses[row.isfire] = (fireStatuses[row.isfire] || 0) + 1;
+        }
+        
+        // Collect dates
+        if (row.date) {
+          dates.push(new Date(row.date));
+        }
+      });
+
+      eventDiscovery = {
+        eventNames: Object.entries(eventNames).sort((a, b) => b[1] - a[1]),
+        statuses: Object.entries(statuses).sort((a, b) => b[1] - a[1]),
+        fireStatuses: Object.entries(fireStatuses).sort((a, b) => b[1] - a[1]),
+        dateRange: dates.length > 0 ? {
+          min: new Date(Math.min(...dates)),
+          max: new Date(Math.max(...dates)),
+          count: dates.length
+        } : null,
+        totalRows: rows.length
+      };
+    }
+
+    function displayEventDiscovery() {
+      // Display event names
+      const eventNamesContainer = document.getElementById('eventNamesList');
+      const eventNameCount = document.getElementById('eventNameCount');
+      eventNameCount.textContent = eventDiscovery.eventNames.length;
+      
+      eventNamesContainer.innerHTML = eventDiscovery.eventNames
+        .map(([name, count]) => 
+          `<span class="event-chip" data-type="event_name" data-value="${name}">
+            <i class="fas fa-tag"></i> ${name} <span class="count">${count}</span>
+          </span>`
+        ).join('');
+
+      // Display statuses
+      const statusContainer = document.getElementById('statusList');
+      const statusCount = document.getElementById('statusCount');
+      statusCount.textContent = eventDiscovery.statuses.length;
+      
+      statusContainer.innerHTML = eventDiscovery.statuses
+        .map(([status, count]) => 
+          `<span class="event-chip" data-type="status" data-value="${status}">
+            <i class="fas fa-circle"></i> ${status} <span class="count">${count}</span>
+          </span>`
+        ).join('');
+
+      // Display fire statuses
+      const fireContainer = document.getElementById('fireStatusList');
+      const fireCount = document.getElementById('fireStatusCount');
+      fireCount.textContent = eventDiscovery.fireStatuses.length;
+      
+      fireContainer.innerHTML = eventDiscovery.fireStatuses
+        .map(([fire, count]) => 
+          `<span class="event-chip" data-type="isfire" data-value="${fire}">
+            <i class="fas fa-${fire === 'yes' ? 'fire' : 'ban'}"></i> ${fire} <span class="count">${count}</span>
+          </span>`
+        ).join('');
+
+      // Display date range
+      const dateRangeInfo = document.getElementById('dateRangeInfo');
+      if (eventDiscovery.dateRange) {
+        const { min, max, count } = eventDiscovery.dateRange;
+        dateRangeInfo.innerHTML = `
+          <div><strong>${count}</strong> records from:</div>
+          <div><i class="fas fa-calendar-alt me-1"></i>${min.toLocaleDateString()} to ${max.toLocaleDateString()}</div>
+        `;
+      } else {
+        dateRangeInfo.innerHTML = '<div class="text-muted">No date information available</div>';
+      }
+
+      // Add click handlers for chips
+      document.querySelectorAll('.event-chip').forEach(chip => {
+        chip.addEventListener('click', function() {
+          const type = this.dataset.type;
+          const value = this.dataset.value;
+          toggleChipSelection(this, type, value);
+          updateDslBuilder();
+        });
+      });
+    }
+
+    function toggleChipSelection(chipElement, type, value) {
+      chipElement.classList.toggle('active');
+      
+      if (chipElement.classList.contains('active')) {
+        // Add to builder state
+        if (type === 'event_name' && !dslBuilderState.eventNames.includes(value)) {
+          dslBuilderState.eventNames.push(value);
+        } else if (type === 'status' && !dslBuilderState.statuses.includes(value)) {
+          dslBuilderState.statuses.push(value);
+        } else if (type === 'isfire' && !dslBuilderState.fireStatuses.includes(value)) {
+          dslBuilderState.fireStatuses.push(value);
+        }
+      } else {
+        // Remove from builder state
+        if (type === 'event_name') {
+          dslBuilderState.eventNames = dslBuilderState.eventNames.filter(v => v !== value);
+        } else if (type === 'status') {
+          dslBuilderState.statuses = dslBuilderState.statuses.filter(v => v !== value);
+        } else if (type === 'isfire') {
+          dslBuilderState.fireStatuses = dslBuilderState.fireStatuses.filter(v => v !== value);
+        }
+      }
+    }
+
+    function updateDslBuilder() {
+      const builderDiv = document.getElementById('dslBuilder');
+      const conditions = [];
+
+      // Build event name conditions
+      if (dslBuilderState.eventNames.length > 0) {
+        if (dslBuilderState.eventNames.length === 1) {
+          conditions.push(`event_name == "${dslBuilderState.eventNames[0]}"`);
+        } else {
+          const eventConditions = dslBuilderState.eventNames.map(name => `event_name == "${name}"`);
+          conditions.push(`(${eventConditions.join(' or ')})`);
+        }
+      }
+
+      // Build status conditions
+      if (dslBuilderState.statuses.length > 0) {
+        if (dslBuilderState.statuses.length === 1) {
+          conditions.push(`status == "${dslBuilderState.statuses[0]}"`);
+        } else {
+          const statusConditions = dslBuilderState.statuses.map(status => `status == "${status}"`);
+          conditions.push(`(${statusConditions.join(' or ')})`);
+        }
+      }
+
+      // Build fire status conditions
+      if (dslBuilderState.fireStatuses.length > 0) {
+        if (dslBuilderState.fireStatuses.length === 1) {
+          conditions.push(`isfire == "${dslBuilderState.fireStatuses[0]}"`);
+        } else {
+          const fireConditions = dslBuilderState.fireStatuses.map(fire => `isfire == "${fire}"`);
+          conditions.push(`(${fireConditions.join(' or ')})`);
+        }
+      }
+
+      // Build final DSL
+      let dsl = '';
+      if (conditions.length > 0) {
+        dsl = `where ${conditions.join(' and ')} | select *`;
+      }
+
+      if (dsl) {
+        builderDiv.innerHTML = `
+          <div class="dsl-preview">
+            <code class="dsl-token">${dsl}</code>
+          </div>
+        `;
+      } else {
+        builderDiv.innerHTML = '<span class="text-muted">Click on event types above to build your query...</span>';
+      }
+    }
+
+    // DSL Builder controls
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('clearBuilderBtn').addEventListener('click', function() {
+        // Clear all selections
+        dslBuilderState = { eventNames: [], statuses: [], fireStatuses: [], operator: 'and' };
+        document.querySelectorAll('.event-chip.active').forEach(chip => {
+          chip.classList.remove('active');
+        });
+        updateDslBuilder();
+      });
+
+      document.getElementById('useBuiltQueryBtn').addEventListener('click', function() {
+        const builderDiv = document.getElementById('dslBuilder');
+        const dslCode = builderDiv.querySelector('code.dsl-token');
+        if (dslCode) {
+          dslInput.value = dslCode.textContent;
+          // Scroll to query input
+          dslInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          dslInput.focus();
+        }
+      });
+
+      // Auto-analyze events when page loads
+      setTimeout(() => {
+        analyzeEventTypes();
+      }, 1000);
+    });
   })();
 </script>
 {% endblock %}
