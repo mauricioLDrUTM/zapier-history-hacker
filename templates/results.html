@@ -349,11 +349,18 @@
     };
 
     function renderRows(rows, shouldStoreAllData = false) {
+      console.log('🎯 renderRows CALLED with:', rows ? rows.length : 0, 'rows');
+      console.log('🎯 renderRows - shouldStoreAllData:', shouldStoreAllData);
+      console.log('🎯 renderRows - First row sample:', rows && rows.length > 0 ? rows[0] : 'No rows');
+      
       if (!rows || rows.length === 0) { 
+        console.log('⚠️ renderRows - No rows to render, hiding table');
         tableWrap.style.display = 'none'; 
         table.innerHTML = ''; 
         return; 
       }
+      
+      console.log('✅ renderRows - Proceeding with rendering', rows.length, 'rows');
       
       // Only store all data if explicitly requested (not on limited loads)
       if (shouldStoreAllData) {
@@ -362,6 +369,7 @@
       
       // Destroy existing DataTable if it exists
       if (dataTable) {
+        console.log('🔄 Destroying existing DataTable');
         dataTable.destroy();
         dataTable = null;
       }
@@ -507,11 +515,16 @@
       }));
 
       // Clear and recreate table structure
+      console.log('📊 Creating table with', rows.length, 'rows and', columns.length, 'columns');
       table.innerHTML = '';
       tableWrap.style.display = '';
+      console.log('✅ Table wrapper display set to visible');
       
       // Initialize DataTable with enhanced features
-      dataTable = $(table).DataTable({
+      console.log('🔧 Initializing DataTable...');
+      
+      try {
+        dataTable = $(table).DataTable({
         data: rows,
         columns: columns,
         pageLength: 15,
@@ -569,6 +582,8 @@
         initComplete: function() {
           // Table is ready - no additional column search needed
           // The main search box will handle all searching
+          console.log('✅ DataTable initialization complete!');
+          console.log('📊 Table now showing', this.api().rows().count(), 'rows');
         }
       });
 
@@ -650,50 +665,159 @@
         $('body').append(feedback);
         setTimeout(() => feedback.fadeOut('fast', function() { $(this).remove(); }), 3000);
       });
+      
+      console.log('✅ renderRows completed successfully!');
+      
+      } catch (error) {
+        console.error('❌ ERROR in DataTable creation:', error);
+        console.error('Stack trace:', error.stack);
+        metaDiv.innerHTML = `<div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          Error creating table: ${error.message}
+        </div>`;
+      }
     }
 
+    let currentQueryId = null;
+    let progressCheckInterval = null;
+
     async function runQuery(exportFmt) {
-      const dsl = (dslInput.value || '').trim();
-      if (!dsl) { alert('Write a DSL query'); return; }
+      console.log('🚀 runQuery called with exportFmt:', exportFmt);
       
-      currentQueryDsl = dsl; // Store current query
-      metaDiv.innerHTML = `<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Processing...</div>`;
+      try {
+        const dsl = (dslInput.value || '').trim();
+        console.log('📝 DSL:', dsl);
+        if (!dsl) { alert('Write a DSL query'); return; }
+        
+        currentQueryDsl = dsl; // Store current query
+        metaDiv.innerHTML = `<div class="alert alert-info">
+          <i class="fas fa-spinner fa-spin me-2"></i>Analyzing dataset and preparing query...
+          <div class="progress mt-2" style="height: 20px;">
+            <div id="queryProgress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 15%">
+              <span class="fw-bold">Loading...</span>
+            </div>
+          </div>
+        </div>`;
+        console.log('✅ Initial loading message displayed');
 
       if (!exportFmt) {
-        const res = await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_id: tempId, dsl }) });
+        // El backend automáticamente usa preview para datasets grandes
+        console.log('📡 Sending query request to backend...');
+        const res = await fetch('/api/query', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ temp_id: tempId, dsl }) 
+        });
+        console.log('📡 Response received, status:', res.status, res.ok);
+        
         const data = await res.json();
-        if (!res.ok || data.error) { metaDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Unknown'}</div>`; renderRows([]); return; }
+        console.log('🔍 DEBUG - Full API Response:', data);
+        console.log('🔍 DEBUG - data.result:', data.result);
+        console.log('🔍 DEBUG - data.result.rows:', data.result ? data.result.rows : 'NO RESULT');
+        
+        if (!res.ok || data.error) { 
+          metaDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Unknown'}</div>`; 
+          renderRows([]); 
+          return; 
+        }
         
         const result = data.result || {};
         const allRows = result.rows || [];
-        console.log('🔍 DEBUG - API Response: Total rows received:', allRows.length);
-        console.log('🔍 DEBUG - API Response: Sample row:', allRows.length > 0 ? allRows[0] : 'No data');
-        console.log('🔍 DEBUG - API Response: Sample row keys:', allRows.length > 0 ? Object.keys(allRows[0]) : 'No data');
-        console.log('🔍 DEBUG - API Response: Contact fields in sample row:', 
-          allRows.length > 0 ? Object.keys(allRows[0]).filter(key => key.includes('contact')) : 'No data');
+        currentQueryId = data.query_id;
         
-        // For initial load, limit to first 100 records for performance
+        console.log('🔍 DEBUG - API Response: Total rows received:', allRows.length);
+        console.log('🔍 DEBUG - Processing status:', data.processing ? 'Background processing' : 'Complete');
+        console.log('🔍 DEBUG - Query ID:', currentQueryId);
+        console.log('🔍 DEBUG - Sample row:', allRows.length > 0 ? allRows[0] : 'No rows');
+        
+        // Define variables for use in both preview and complete modes
         const initialLoadLimit = 100;
         const initialRows = allRows.slice(0, initialLoadLimit);
         const hasMore = allRows.length > initialLoadLimit;
         
-        // Store all data first, then render limited data
-        allQueryData = allRows;
-        renderRows(initialRows, false); // Pass false so it doesn't overwrite allQueryData
-        
-        let infoText = `<div><strong>Results :</strong> ${allRows.length} total`;
-        if (hasMore) {
-          infoText += ` (showing first ${initialRows.length} for performance)`;
+        // Mostrar resultados inmediatamente SI HAY FILAS
+        if (allRows.length > 0) {
+          allQueryData = allRows;
+          
+          console.log('🔍 DEBUG - Calling renderRows with', initialRows.length, 'rows');
+          renderRows(initialRows, false);
+          console.log('🔍 DEBUG - renderRows completed');
+        } else {
+          console.log('⚠️ WARNING - No rows returned in preview!');
         }
-        infoText += `</div>`;
         
-        metaDiv.innerHTML = `
-        <div class="alert alert-success">
-          ${infoText}
-          ${result.meta?.group_by ? `<div><strong>Group by:</strong> ${result.meta.group_by.join(', ')}</div>` : ''}
-          ${result.meta?.count ? `<div><strong>Count:</strong> Yes</div>` : ''}
-          ${hasMore ? `<div class="text-muted small"><i class="fas fa-info-circle me-1"></i>Select "All" from page size dropdown to load all ${allRows.length} records</div>` : ''}
-        </div>`;
+        // Si está procesando en background, mostrar mensaje y polling
+        if (data.processing) {
+          const totalEvents = data.total_events || 'unknown';
+          const shownRows = allRows.length;
+          
+          console.log('🔍 DEBUG - Entering preview mode UI update');
+          console.log('🔍 DEBUG - Total events:', totalEvents, '| Preview rows:', shownRows);
+          
+          if (shownRows > 0) {
+            metaDiv.innerHTML = `
+            <div class="alert alert-success border-info">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <i class="fas fa-check-circle me-2 text-success"></i>
+                  <strong>Quick Preview Ready!</strong> Showing first ${shownRows} results
+                </div>
+                <span class="badge bg-success">${shownRows} rows loaded</span>
+              </div>
+              <div class="alert alert-info mb-0 p-2">
+                <div class="d-flex align-items-center">
+                  <i class="fas fa-spinner fa-spin me-2"></i>
+                  <span class="small">Processing full dataset in background (${totalEvents} events total)...</span>
+                </div>
+                <div class="progress mt-2" style="height: 22px;">
+                  <div id="queryProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                       role="progressbar" style="width: 25%">
+                    <span class="fw-bold">25% - Loading data...</span>
+                  </div>
+                </div>
+                <div class="text-muted small mt-1">
+                  <i class="fas fa-bolt me-1"></i>Table will auto-update when complete. You can export now or wait for full results.
+                </div>
+              </div>
+            </div>`;
+            
+            // Iniciar polling para checkear progreso
+            startProgressPolling(data.query_id);
+          } else {
+            // Preview pero sin rows - mostrar solo loader
+            console.log('⚠️ WARNING - Preview mode but no rows!');
+            metaDiv.innerHTML = `
+            <div class="alert alert-info">
+              <div class="d-flex align-items-center">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                <span>Processing dataset (${totalEvents} events total)...</span>
+              </div>
+              <div class="progress mt-2" style="height: 22px;">
+                <div id="queryProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                     role="progressbar" style="width: 25%">
+                  <span class="fw-bold">25% - Loading data...</span>
+                </div>
+              </div>
+            </div>`;
+            startProgressPolling(data.query_id);
+          }
+        } else {
+          // Query completo
+          let infoText = `<div><strong>Results:</strong> ${allRows.length} total`;
+          if (hasMore) {
+            infoText += ` (showing first ${initialRows.length} for performance)`;
+          }
+          infoText += `</div>`;
+          
+          metaDiv.innerHTML = `
+          <div class="alert alert-success">
+            ${infoText}
+            ${result.meta?.group_by ? `<div><strong>Group by:</strong> ${result.meta.group_by.join(', ')}</div>` : ''}
+            ${result.meta?.count ? `<div><strong>Count:</strong> Yes</div>` : ''}
+            ${result.meta?.preview ? `<div class="text-warning"><i class="fas fa-info-circle me-1"></i>${result.meta.note}</div>` : ''}
+            ${hasMore ? `<div class="text-muted small"><i class="fas fa-info-circle me-1"></i>Select "All" from page size dropdown to load all ${allRows.length} records</div>` : ''}
+          </div>`;
+        }
       } else {
         const res = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_id: tempId, dsl, format: exportFmt }) });
         if (!res.ok) { const data = await res.json().catch(() => ({})); metaDiv.innerHTML = `<div class="alert alert-danger">Error exporting: ${data.error || res.statusText}</div>`; return; }
@@ -702,11 +826,94 @@
         document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
         metaDiv.innerHTML = `<div class="alert alert-success">File exported.</div>`;
       }
+      
+      } catch (error) {
+        console.error('❌ CRITICAL ERROR in runQuery:', error);
+        console.error('Stack trace:', error.stack);
+        metaDiv.innerHTML = `<div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <strong>Error processing query:</strong> ${error.message}
+          <div class="mt-2 small">Check browser console (F12) for details</div>
+        </div>`;
+      }
+    }
+
+    function startProgressPolling(queryId) {
+      // Limpiar interval previo si existe
+      if (progressCheckInterval) {
+        clearInterval(progressCheckInterval);
+      }
+      
+      // Checkear progreso cada 2 segundos
+      progressCheckInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/query/status/${queryId}`);
+          const status = await res.json();
+          
+          if (status.status === 'complete') {
+            clearInterval(progressCheckInterval);
+            progressCheckInterval = null;
+            
+            // Actualizar con resultados completos
+            const result = status.result || {};
+            const allRows = result.rows || [];
+            
+            allQueryData = allRows;
+            const initialLoadLimit = 100;
+            const initialRows = allRows.slice(0, initialLoadLimit);
+            renderRows(initialRows, false);
+            
+            metaDiv.innerHTML = `
+            <div class="alert alert-success">
+              <i class="fas fa-check-circle me-2"></i>
+              <strong>Query completed!</strong> ${allRows.length} total results
+              ${result.meta?.group_by ? `<div><strong>Group by:</strong> ${result.meta.group_by.join(', ')}</div>` : ''}
+              ${result.meta?.count ? `<div><strong>Count:</strong> Yes</div>` : ''}
+              ${allRows.length > initialLoadLimit ? `<div class="text-muted small"><i class="fas fa-info-circle me-1"></i>Showing first ${initialLoadLimit} for performance. Select "All" to load all records.</div>` : ''}
+            </div>`;
+          } else if (status.status === 'error') {
+            clearInterval(progressCheckInterval);
+            progressCheckInterval = null;
+            metaDiv.innerHTML = `<div class="alert alert-danger">
+              <i class="fas fa-exclamation-triangle me-2"></i>Error processing query: ${status.error || 'Unknown'}
+            </div>`;
+          } else {
+            // Actualizar progreso
+            const progress = status.progress || 25;
+            const progressBar = document.getElementById('queryProgress');
+            if (progressBar) {
+              progressBar.style.width = `${progress}%`;
+              
+              // Mensaje según el progreso
+              let message = 'Processing...';
+              if (progress <= 30) {
+                message = 'Loading data...';
+              } else if (progress <= 50) {
+                message = 'Normalizing events...';
+              } else if (progress <= 75) {
+                message = 'Executing query...';
+              } else {
+                message = 'Almost done...';
+              }
+              
+              progressBar.innerHTML = `<span class="fw-bold">${progress}% - ${message}</span>`;
+            }
+          }
+        } catch (err) {
+          console.error('Error checking query status:', err);
+        }
+      }, 2000); // Check every 2 seconds
     }
 
     runBtn.addEventListener('click', () => runQuery(null));
-    exportXlsxBtn.addEventListener('click', () => runQuery('xlsx'));
-    exportCsvBtn.addEventListener('click', () => runQuery('csv'));
+    
+    // Only add export listeners if buttons exist
+    if (exportXlsxBtn) {
+      exportXlsxBtn.addEventListener('click', () => runQuery('xlsx'));
+    }
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', () => runQuery('csv'));
+    }
 
     // Event Discovery Functions
     function analyzeEventTypes() {

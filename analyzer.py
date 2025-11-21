@@ -9,7 +9,7 @@ FALSE_LIKE = {"no", "false", "0", ""}
 def normalize_events(raw: dict):
     """
     Returns:
-      df_events: one row per event with handy top-level fields
+      df_events: one row per event with handy top-level fields + ALL dynamic fields from JSON
       df_kv: exploded key/values (if you already produce it)
     """
     rows = []
@@ -122,6 +122,20 @@ def normalize_events(raw: dict):
         base["isfire"] = isfire_s  # e.g., "yes"
         # ---------- /NEW canonical fields ----------
 
+        # ========== DYNAMIC FIELDS: Add ALL remaining fields from event_data ==========
+        # This allows querying ANY field from the JSON without hardcoding it above
+        for key, value in event_data.items():
+            # Skip fields we already handled explicitly to avoid duplicates/conflicts
+            if key in base or key in ["date", "status", "object_id", "object_title"]:
+                continue
+            # Add the field with its original key name
+            # Convert lists/dicts to string representation for DataFrame compatibility
+            if isinstance(value, (list, dict)):
+                base[key] = str(value)
+            else:
+                base[key] = value
+        # ========== /DYNAMIC FIELDS ==========
+
         rows.append(base)
 
         # (optional) if you already populate kv_rows for a long table, keep your logic here
@@ -175,7 +189,30 @@ def build_catalog(df_events: pd.DataFrame) -> dict:
 
 
 # where event_name == "Schedule" and isfire == true | count by status
+def _clean_nan_for_json(rows: list) -> list:
+    """
+    Replace NaN, inf, -inf with None for proper JSON serialization.
+    This prevents "NaN is not valid JSON" errors in the frontend.
+    """
+    import math
+    cleaned_rows = []
+    for row in rows:
+        cleaned_row = {}
+        for key, value in row.items():
+            # Check for NaN, inf, -inf
+            if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                cleaned_row[key] = None
+            else:
+                cleaned_row[key] = value
+        cleaned_rows.append(cleaned_row)
+    return cleaned_rows
+
+
 def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
+    """
+    Run query on events DataFrame. Returns dict with 'rows' and 'meta'.
+    NaN values are replaced with None for proper JSON serialization.
+    """
     if df_events.empty:
         return {"rows": [], "meta": {"note": "no data"}}
 
@@ -186,7 +223,7 @@ def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
     want_count = False
     limit_n = None  # None = no explicit limit from DSL
     offset_n = 0  # default 0
-    DEFAULT_LIMIT = 100  # safety guardrail
+    DEFAULT_LIMIT = 1500  # safety guardrail
 
     parts = [p.strip() for p in dsl.split("|")]
     for part in parts:
@@ -272,7 +309,7 @@ def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
         total = len(grp)
         out = grp if (limit_n is None and offset_n == 0) else _window(grp)
         return {
-            "rows": out.to_dict(orient="records"),
+            "rows": _clean_nan_for_json(out.to_dict(orient="records")),
             "meta": {
                 "count": True,
                 "group_by": group_by,
@@ -291,7 +328,7 @@ def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
         total = len(grp)
         out = grp if (limit_n is None and offset_n == 0) else _window(grp)
         return {
-            "rows": out.to_dict(orient="records"),
+            "rows": _clean_nan_for_json(out.to_dict(orient="records")),
             "meta": {
                 "group_by": group_by,
                 "total_rows": total,
@@ -306,7 +343,7 @@ def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
         # select * respects offset/limit if provided; otherwise no limit
         out = df if (limit_n is None and offset_n == 0) else _window(df)
         return {
-            "rows": out.to_dict(orient="records"),
+            "rows": _clean_nan_for_json(out.to_dict(orient="records")),
             "meta": {
                 "select": "*",
                 "rows": len(out),
@@ -320,7 +357,7 @@ def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
     if limit_n is None and offset_n == 0:
         out = df.head(DEFAULT_LIMIT)
         return {
-            "rows": out.to_dict(orient="records"),
+            "rows": _clean_nan_for_json(out.to_dict(orient="records")),
             "meta": {
                 "rows": len(out),
                 "total_rows": total_rows,
@@ -333,7 +370,7 @@ def run_query(df_events: pd.DataFrame, dsl: str) -> Dict[str, Any]:
     # If user provided limit/offset, apply them
     out = _window(df)
     return {
-        "rows": out.to_dict(orient="records"),
+        "rows": _clean_nan_for_json(out.to_dict(orient="records")),
         "meta": {
             "rows": len(out),
             "total_rows": total_rows,

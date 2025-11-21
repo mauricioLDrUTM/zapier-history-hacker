@@ -7,6 +7,7 @@ JSON Zap Interpreter - Flask App (v2)
 - Intérprete (mini-DSL) con endpoints de consulta y exportación.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -14,6 +15,8 @@ import pickle
 import re
 import tempfile
 import uuid
+import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -43,10 +46,15 @@ ALLOWED_EXTENSIONS = {"json"}
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # 30MB
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 30MB
 
 # Simple storage de archivos temporales (id -> path)
 TEMP_DATA_FILES: Dict[str, str] = {}
+
+# Cache para resultados de queries (query_id -> {status, result, progress})
+QUERY_CACHE: Dict[str, Dict[str, Any]] = {}
+QUERY_CACHE_LOCK = threading.Lock()
+QUERY_CACHE_LOCK = threading.Lock()
 
 # ------------------------------------------------------------------------------
 # Utilidades base
@@ -424,26 +432,208 @@ def api_query():
     Body:
     {
       "temp_id": "<id>",
-      "dsl": "where event_name == \"Schedule\" and isfire == true | count by status"
+      "dsl": "where event_name == \"Schedule\" and isfire == true | count by status",
+      "preview": true/false  // Si true, devuelve max 50 filas rápidamente
     }
     """
     try:
         payload = request.get_json() or {}
         temp_id = payload.get("temp_id")
         dsl = (payload.get("dsl") or "").strip()
+        preview_mode = payload.get("preview", False)
+        
         if not temp_id or temp_id not in TEMP_DATA_FILES:
             return jsonify({"error": "temp_id inválido"}), 400
         if not dsl:
             return jsonify({"error": "Missing dsl"}), 400
 
+        # Generar ID único para este query
+        query_id = hashlib.md5(f"{temp_id}:{dsl}".encode()).hexdigest()
+
+        # Si ya está en caché y completo, devolverlo
+        with QUERY_CACHE_LOCK:
+            if query_id in QUERY_CACHE:
+                cached = QUERY_CACHE[query_id]
+                if cached["status"] == "complete":
+                    return jsonify({
+                        "ok": True, 
+                        "result": cached["result"],
+                        "query_id": query_id,
+                        "from_cache": True
+                    })
+                elif preview_mode and cached["status"] == "processing":
+                    # Devolver vista previa si está disponible
+                    if "preview" in cached:
+                        return jsonify({
+                            "ok": True,
+                            "result": cached["preview"],
+                            "query_id": query_id,
+                            "processing": True,
+                            "progress": cached.get("progress", 0)
+                        })
+
         with open(TEMP_DATA_FILES[temp_id], "rb") as f:
             json_data = pickle.load(f)
 
         df_events, _ = normalize_events(json_data)
+        total_events = len(df_events)
+        
+        # ESTRATEGIA: Para datasets grandes (>200 eventos), usar procesamiento progresivo SIEMPRE
+        PREVIEW_THRESHOLD = 200
+        PREVIEW_ROWS = 50
+        
+        if total_events > PREVIEW_THRESHOLD:
+            # Dataset grande: ejecutar query limitado primero para preview rápido
+            print(f"[PROGRESSIVE] Large dataset detected: {total_events} events. Using preview mode.")
+            
+            # Ejecutar query con límite para obtener preview rápido
+            preview_dsl = dsl
+            if "| limit" not in dsl.lower():
+                # Agregar limit al final del DSL, sin importar si tiene select o no
+                preview_dsl = f"{dsl} | limit {PREVIEW_ROWS}"
+            
+            print(f"[PROGRESSIVE] Original DSL: {dsl}")
+            print(f"[PROGRESSIVE] Preview DSL: {preview_dsl}")
+            
+            preview_out = run_query(df_events, preview_dsl)
+            
+            print(f"[PROGRESSIVE] Preview query returned: {len(preview_out.get('rows', []))} rows")
+            print(f"[PROGRESSIVE] Preview query meta: {preview_out.get('meta', {})}")
+            
+            preview_result = {
+                "rows": preview_out["rows"][:PREVIEW_ROWS],
+                "meta": {
+                    **preview_out.get("meta", {}),
+                    "preview": True,
+                    "shown_rows": min(len(preview_out["rows"]), PREVIEW_ROWS),
+                    "total_rows": total_events,
+                    "note": f"Showing first {PREVIEW_ROWS} rows. Full query processing in background."
+                }
+            }
+            
+            print(f"[PROGRESSIVE] Preview result contains: {len(preview_result['rows'])} rows")
+            
+            # Guardar preview en caché e iniciar procesamiento completo
+            with QUERY_CACHE_LOCK:
+                QUERY_CACHE[query_id] = {
+                    "status": "processing",
+                    "preview": preview_result,
+                    "progress": 25,
+                    "started_at": time.time()
+                }
+            
+            # Iniciar procesamiento completo en background
+            thread = threading.Thread(
+                target=_process_query_background,
+                args=(query_id, temp_id, dsl),
+                daemon=True
+            )
+            thread.start()
+            
+            print(f"[PROGRESSIVE] Preview returned with {len(preview_result['rows'])} rows. Background processing started.")
+            
+            return jsonify({
+                "ok": True,
+                "result": preview_result,
+                "query_id": query_id,
+                "processing": True,
+                "total_events": total_events
+            })
+        
+        # Dataset pequeño: procesar normalmente
+        print(f"[NORMAL] Small dataset: {total_events} events. Processing normally.")
         out = run_query(df_events, dsl)
-        return jsonify({"ok": True, "result": out})
+        
+        with QUERY_CACHE_LOCK:
+            QUERY_CACHE[query_id] = {
+                "status": "complete",
+                "result": out,
+                "completed_at": time.time()
+            }
+        
+        return jsonify({"ok": True, "result": out, "query_id": query_id})
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _process_query_background(query_id: str, temp_id: str, dsl: str):
+    """Procesa el query completo en background con actualizaciones de progreso"""
+    try:
+        print(f"[BACKGROUND] Starting full query processing for {query_id}")
+        
+        # Progreso: 25% -> 40% (cargando datos)
+        with QUERY_CACHE_LOCK:
+            if query_id in QUERY_CACHE:
+                QUERY_CACHE[query_id]["progress"] = 40
+        
+        with open(TEMP_DATA_FILES[temp_id], "rb") as f:
+            json_data = pickle.load(f)
+        
+        print(f"[BACKGROUND] Data loaded, normalizing {len(json_data)} events...")
+        
+        # Progreso: 40% -> 60% (normalizando)
+        with QUERY_CACHE_LOCK:
+            if query_id in QUERY_CACHE:
+                QUERY_CACHE[query_id]["progress"] = 60
+        
+        df_events, _ = normalize_events(json_data)
+        
+        print(f"[BACKGROUND] Normalized. Running full query...")
+        
+        # Progreso: 60% -> 80% (ejecutando query)
+        with QUERY_CACHE_LOCK:
+            if query_id in QUERY_CACHE:
+                QUERY_CACHE[query_id]["progress"] = 80
+        
+        # Ejecutar query completo
+        out = run_query(df_events, dsl)
+        
+        print(f"[BACKGROUND] Query completed. Results: {len(out.get('rows', []))} rows")
+        
+        # Progreso: 100% (completado)
+        with QUERY_CACHE_LOCK:
+            QUERY_CACHE[query_id] = {
+                "status": "complete",
+                "result": out,
+                "progress": 100,
+                "completed_at": time.time()
+            }
+        
+        print(f"[BACKGROUND] Query {query_id} completed successfully")
+        
+    except Exception as e:
+        print(f"[BACKGROUND] Error processing query {query_id}: {str(e)}")
+        with QUERY_CACHE_LOCK:
+            QUERY_CACHE[query_id] = {
+                "status": "error",
+                "error": str(e),
+                "completed_at": time.time()
+            }
+
+
+@app.route("/api/query/status/<query_id>", methods=["GET"])
+def api_query_status(query_id):
+    """
+    Obtener el estado de un query en procesamiento
+    """
+    with QUERY_CACHE_LOCK:
+        if query_id not in QUERY_CACHE:
+            return jsonify({"error": "Query not found"}), 404
+        
+        cached = QUERY_CACHE[query_id]
+        status_info = {
+            "status": cached["status"],
+            "progress": cached.get("progress", 100 if cached["status"] == "complete" else 0)
+        }
+        
+        if cached["status"] == "complete":
+            status_info["result"] = cached["result"]
+        elif cached["status"] == "error":
+            status_info["error"] = cached.get("error", "Unknown error")
+        
+        return jsonify(status_info)
+
 
 @app.route("/api/export", methods=["POST"])
 def api_export():

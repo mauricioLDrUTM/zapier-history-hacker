@@ -102,10 +102,21 @@ zapier-history-hacker/
 The application analyzes JSON data by:
 
 1. **Loading JSON**: Parses the uploaded JSON file
-2. **Event Processing**: Iterates through each event in the data
-3. **Filter Matching**: Looks for the pattern `output__{root_id}__querystring__{filter_param}`
-4. **Classification**: Categorizes events as matching or non-matching
+2. **Event Processing**: Iterates through each event in the data and extracts ALL fields dynamically
+3. **Filter Matching**: Supports filtering by ANY field in the JSON (predefined or custom)
+4. **Classification**: Categorizes events based on your query criteria
 5. **Statistics**: Calculates totals, success rates, and generates visualizations
+
+### 🆕 Dynamic Field Support
+
+**NEW**: The application now automatically extracts **ALL fields** from your JSON files, not just predefined ones. This means you can query ANY field without modifying code.
+
+**Example queries:**
+- `where event_name == "Schedule"` (predefined field)
+- `where output__263780428__text == "No ad_id or adset_id found"` (dynamic field)
+- `where event_name == "Schedule" and output__263780428__text == "No ad_id or adset_id found"` (combined)
+
+See [DYNAMIC_FIELDS_GUIDE.md](DYNAMIC_FIELDS_GUIDE.md) for complete documentation.
 
 ## Example JSON Format
 
